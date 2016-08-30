@@ -14,6 +14,7 @@
 #    under the License.
 
 import socket
+import time
 import urlparse
 
 
@@ -169,19 +170,40 @@ class WindowsActionManager(base.BaseActionManager):
         self.wait_boot_completion()
 
     def git_clone(self, repo_url, location):
-        """Clone from an remote repo to a specific location on the instance.
+        """Clone a remote repository to a specific location on the instance.
 
         :param repo_url:
-            The remote repo url.
+            The remote repository url.
         :param location:
             Specific location on the instance.
         """
-        LOG.info("Cloning from %s to %s", repo_url, location)
-        cmd = "git clone {} {}".format(repo_url, location)
-        self._client.run_command_with_retry(cmd,
-                                            count=util.RETRY_COUNT,
-                                            delay=util.RETRY_DELAY,
-                                            command_type=util.CMD)
+        LOG.info('Trying to clone from %r to "%s".', repo_url, location)
+        cmd = 'git clone {repo_url} "{location}"'.format(
+            repo_url=repo_url, location=location)
+
+        count = util.RETRY_COUNT
+        while (count > 0):
+            count -= 1
+            try:
+                if self.exists(location):
+                    if self.is_dir(location):
+                        self.rmdir(location)
+                    else:
+                        self.remove(location)
+
+                self._client.run_remote_cmd(cmd, command_type=util.CMD)
+            except exceptions.ArgusError as exc:
+                LOG.error("Failed to clone the repository: %s", exc)
+
+                if count > 0:
+                    LOG.debug("Retrying...")
+                    time.sleep(util.RETRY_DELAY)
+                else:
+                    raise exceptions.ArgusTimeoutError(
+                        "Command {!r} failed too many times.".format(cmd))
+            else:
+                LOG.info("The repository was successfully cloned!")
+                break
 
     def wait_cbinit_service(self):
         """Wait if the CloudBase Init Service to stop."""
