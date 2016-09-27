@@ -1,4 +1,4 @@
-schtasks /CREATE /TN "cloudbaseinit-installer" /SC ONCE /SD 01/01/2020 /ST 00:00:00 /RL HIGHEST /RU CiAdmin /RP Passw0rd /TR "powershell C:\\installcbinit.ps1  -serviceType %1 -installer %2" /F
+schtasks /CREATE /TN "cloudbaseinit-installer" /SC ONCE /SD 01/01/2020 /ST 00:00:00 /RL HIGHEST /RU CiAdmin /RP Passw0rd /TR "powershell C:\\installcbinit.ps1 -installer %2" /F
 
 schtasks /RUN /TN "cloudbaseinit-installer"
 
