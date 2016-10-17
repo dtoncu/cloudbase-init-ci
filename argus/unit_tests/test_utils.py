@@ -36,6 +36,13 @@ USERNAME = "fake_username"
 PATH = r"fake\path"
 PATH_TYPE = "FakeType"
 ITEM_TYPE = "FakeType"
+CMD = "fake-command"
+STDOUT = "fake-stdout"
+STDERR = "fake-stderr"
+EXIT_CODE = 0
+PYTHON_DIR = r"fake\python\dir"
+CBINIT_DIR = r"fake\cbinit\dir"
+INSTALLER = "fake_installer"
 
 
 # This is similar with unittest.TestCase.assertLogs from Python 3.4.

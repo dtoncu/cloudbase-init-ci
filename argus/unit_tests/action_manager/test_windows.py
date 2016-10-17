@@ -14,6 +14,7 @@
 #    under the License.
 
 import requests
+import time
 import unittest
 import urlparse
 
@@ -23,10 +24,13 @@ except ImportError:
     import mock
 
 from argus.action_manager import windows as action_manager
+from argus import config as argus_config
 from argus import exceptions
 from argus.unit_tests import test_utils
 from argus.introspection.cloud import windows as introspection
 from argus import util
+
+CONFIG = argus_config.CONFIG
 
 
 class WindowsActionManagerTest(unittest.TestCase):
@@ -34,11 +38,10 @@ class WindowsActionManagerTest(unittest.TestCase):
 
     def setUp(self):
         self._client = mock.MagicMock()
-        self._config = mock.MagicMock()
         self._os_type = mock.sentinel.os_type
 
         self._action_manager = action_manager.WindowsActionManager(
-            client=self._client, config=self._config, os_type=self._os_type)
+            client=self._client, os_type=self._os_type)
 
     def _test_wait_boot_completion_function(self, run_command_exc=None):
         if run_command_exc:
@@ -76,11 +79,9 @@ class WindowsActionManagerTest(unittest.TestCase):
         with self.assertRaises(exceptions.ArgusTimeoutError):
             self._action_manager.download(test_utils.URI, test_utils.LOCATION)
 
+    @test_utils.ConfPatcher('resources', test_utils.BASE_RESOURCE, 'argus')
     @mock.patch('argus.action_manager.windows.WindowsActionManager.download')
-    def _test_download_resource(self, mock_download, base_resource,
-                                expected_uri, exc=None):
-        self._config.argus.resources = base_resource
-
+    def _test_download_resource(self, mock_download, expected_uri, exc=None):
         if exc:
             mock_download.side_effect = exc
             with self.assertRaises(exceptions.ArgusTimeoutError):
@@ -95,21 +96,26 @@ class WindowsActionManagerTest(unittest.TestCase):
 
     def test_download_resource_exception(self):
         self._test_download_resource(
-            base_resource=test_utils.BASE_RESOURCE,
             expected_uri=None,
             exc=exceptions.ArgusTimeoutError)
 
     def test_download_resource_base_resource_endswith_slash(self):
         self._test_download_resource(
-            base_resource=test_utils.BASE_RESOURCE,
             expected_uri=urlparse.urljoin(
                 test_utils.BASE_RESOURCE, test_utils.RESOURCE_LOCATION))
 
-    def test_download_resource_base_resource_not_endswith_slash(self):
-        self._test_download_resource(
-            base_resource=test_utils.BASE_RESOURCE[:-1],
-            expected_uri=urlparse.urljoin(
-                test_utils.BASE_RESOURCE, test_utils.RESOURCE_LOCATION))
+    @test_utils.ConfPatcher('resources', test_utils.BASE_RESOURCE[:-1],
+                            'argus')
+    @mock.patch('argus.action_manager.windows.WindowsActionManager.download')
+    def test_download_resource_base_resource_not_endswith_slash(
+            self, mock_download):
+        expected_uri = urlparse.urljoin(
+            test_utils.BASE_RESOURCE, test_utils.RESOURCE_LOCATION)
+
+        self._action_manager.download_resource(
+            test_utils.RESOURCE_LOCATION, test_utils.LOCATION)
+        mock_download.assert_called_once_with(
+            expected_uri, test_utils.LOCATION)
 
     @mock.patch('argus.action_manager.windows.WindowsActionManager'
                 '.download_resource')
@@ -192,17 +198,6 @@ class WindowsActionManagerTest(unittest.TestCase):
         test_method = self._action_manager.execute_powershell_resource_script
         self._test_execute_res_script(
             test_method=test_method, script_type=util.POWERSHELL_SCRIPT_BYPASS,
-            exc=exceptions.ArgusTimeoutError)
-
-    def test_execute_cmd_resource_script_successful(self):
-        test_method = self._action_manager.execute_cmd_resource_script
-        self._test_execute_res_script(
-            test_method=test_method, script_type=util.BAT_SCRIPT)
-
-    def test_execute_cmd_resource_script_exception(self):
-        test_method = self._action_manager.execute_cmd_resource_script
-        self._test_execute_res_script(
-            test_method=test_method, script_type=util.BAT_SCRIPT,
             exc=exceptions.ArgusTimeoutError)
 
     @mock.patch('argus.action_manager.windows.WindowsActionManager'
@@ -302,15 +297,13 @@ class WindowsActionManagerTest(unittest.TestCase):
                                              test_utils.LOCATION)
         self.assertTrue(res)
 
-    @mock.patch('time.sleep')
-    @mock.patch('argus.action_manager.windows.WindowsActionManager.'
-                'rmdir')
     @mock.patch('argus.action_manager.windows.WindowsActionManager.'
                 'is_dir')
     @mock.patch('argus.action_manager.windows.WindowsActionManager.'
                 'exists')
-    def test_git_clone_exception(self, mock_exists, mock_is_dir,
-                                 mock_rmdir, mock_sleep):
+    def test_git_clone_exception(self, mock_exists, mock_is_dir):
+        self._action_manager.rmdir = mock.Mock()
+        time.sleep = mock.Mock()
         mock_exists.side_effect = [False, True, True]
         mock_is_dir.return_value = True
         self._client.run_command.side_effect = exceptions.ArgusError
@@ -366,10 +359,9 @@ class WindowsActionManagerTest(unittest.TestCase):
         self.assertEqual(
             self._client.run_command_until_condition.call_count, 2)
 
+    @test_utils.ConfPatcher('image_username', test_utils.USERNAME, 'openstack')
     @mock.patch('argus.action_manager.windows.wait_boot_completion')
     def _test_wait_boot_completion(self, mock_wait_boot_completion, exc=None):
-        self._config.openstack.image_username = test_utils.USERNAME
-
         if exc:
             mock_wait_boot_completion.side_effect = exc
             with self.assertRaises(exc):
@@ -833,24 +825,25 @@ class WindowsActionManagerTest(unittest.TestCase):
         self._test_touch(is_dir_exc=exceptions.ArgusTimeoutError)
 
     def _test_execute(self, exc=None):
-        cmd = "fake-command"
-
         if exc:
             self._client.run_command_with_retry = mock.Mock(side_effect=exc)
             with self.assertRaises(exc):
                 self._action_manager._execute(
-                    cmd, count=util.RETRY_COUNT, delay=util.RETRY_DELAY,
-                    command_type=util.CMD)
+                    test_utils.CMD, count=util.RETRY_COUNT,
+                    delay=util.RETRY_DELAY, command_type=util.CMD)
         else:
             mock_cmd_retry = mock.Mock()
-            mock_cmd_retry.return_value = ("fake-stdout", "fake-stderr", 0)
+            mock_cmd_retry.return_value = (test_utils.STDOUT,
+                                           test_utils.STDERR,
+                                           test_utils.EXIT_CODE)
             self._client.run_command_with_retry = mock_cmd_retry
             self.assertEqual(self._action_manager._execute(
-                cmd, count=util.RETRY_COUNT, delay=util.RETRY_DELAY,
-                command_type=util.CMD), "fake-stdout")
+                test_utils.CMD, count=util.RETRY_COUNT,
+                delay=util.RETRY_DELAY, command_type=util.CMD),
+                test_utils.STDOUT)
             self._client.run_command_with_retry.assert_called_once_with(
-                cmd, count=util.RETRY_COUNT, delay=util.RETRY_DELAY,
-                command_type=util.CMD)
+                test_utils.CMD, count=util.RETRY_COUNT,
+                delay=util.RETRY_DELAY, command_type=util.CMD)
 
     def test_execute(self):
         self._test_execute()
@@ -869,9 +862,10 @@ class WindowsActionManagerTest(unittest.TestCase):
             self.assertFalse(self._action_manager.check_cbinit_installation())
             return
 
-        python_dir = r"fake\path"
-        cmd = r'& "{}\python.exe" -c "import cloudbaseinit"'.format(python_dir)
-        introspection.get_python_dir = mock.Mock(return_value=python_dir)
+        cmd = r'& "{}\python.exe" -c "import cloudbaseinit"'.format(
+            test_utils.PYTHON_DIR)
+        introspection.get_python_dir = mock.Mock(
+            return_value=test_utils.PYTHON_DIR)
         if run_remote_cmd_exc:
             self._client.run_remote_cmd = mock.Mock(
                 side_effect=run_remote_cmd_exc)
@@ -903,8 +897,8 @@ class WindowsActionManagerTest(unittest.TestCase):
             self.assertFalse(self._action_manager.cbinit_cleanup())
             return
 
-        cbinit_dir = r"fake\path"
-        introspection.get_cbinit_dir = mock.Mock(return_value=cbinit_dir)
+        introspection.get_cbinit_dir = mock.Mock(
+            return_value=test_utils.CBINIT_DIR)
         if rmdir_exc:
             mock_rmdir.side_effect = rmdir_exc
             self.assertFalse(self._action_manager.cbinit_cleanup())
@@ -1024,17 +1018,16 @@ class WindowsActionManagerTest(unittest.TestCase):
     @mock.patch('argus.action_manager.windows.WindowsActionManager'
                 '.execute_powershell_resource_script')
     def _test_run_installation_script(self, mock_execute_script, exc=None):
-        installer = "fake_installer"
-
         if exc:
             mock_execute_script.side_effect = exc
             with self.assertRaises(exc):
-                self._action_manager._run_installation_script(installer)
+                self._action_manager._run_installation_script(
+                    test_utils.INSTALLER)
         else:
-            self._action_manager._run_installation_script(installer)
+            self._action_manager._run_installation_script(test_utils.INSTALLER)
             mock_execute_script.assert_called_once_with(
                 resource_location='windows/installCBinit.ps1',
-                parameters='-installer {}'.format(installer))
+                parameters='-installer {}'.format(test_utils.INSTALLER))
 
     def test_run_installation_script(self):
         self._test_run_installation_script()
@@ -1046,19 +1039,19 @@ class WindowsActionManagerTest(unittest.TestCase):
         self._test_run_installation_script(exc=exceptions.ArgusError)
 
     @mock.patch('argus.action_manager.windows.WindowsActionManager'
-                '.execute_cmd_resource_script')
+                '.execute_powershell_resource_script')
     def _test_deploy_using_scheduled_task(self, mock_execute_script, exc=None):
-        installer = "fake_installer"
-
         if exc:
             mock_execute_script.side_effect = exc
             with self.assertRaises(exc):
-                self._action_manager._deploy_using_scheduled_task(installer)
+                self._action_manager._deploy_using_scheduled_task(
+                    test_utils.INSTALLER)
         else:
-            self._action_manager._deploy_using_scheduled_task(installer)
+            self._action_manager._deploy_using_scheduled_task(
+                test_utils.INSTALLER)
             mock_execute_script.assert_called_once_with(
-                'windows/schedule_installer.bat',
-                '{}'.format(installer))
+                'windows/schedule_installer.ps1',
+                '{}'.format(test_utils.INSTALLER))
 
     def test_deploy_using_scheduled_task(self):
         self._test_deploy_using_scheduled_task()
@@ -1069,3 +1062,13 @@ class WindowsActionManagerTest(unittest.TestCase):
 
     def test_deploy_using_scheduled_task_argus_error(self):
         self._test_deploy_using_scheduled_task(exc=exceptions.ArgusError)
+
+    def test_prepare_config(self):
+        with test_utils.LogSnatcher(
+                'argus.action_manager.windows.WindowsActionManager'
+                '.prepare_config') as snatcher:
+            self.assertIsNone(self._action_manager.prepare_config(
+                mock.Mock(), mock.Mock()))
+            self.assertEqual(snatcher.output,
+                             ["Config Cloudbase-Init"
+                              " for {}".format(self._os_type)])
