@@ -13,6 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+# pylint: disable=no-value-for-parameter, too-many-lines, protected-access
+# pylint: disable=no-name-in-module, too-many-public-methods
+
 import requests
 import time
 import unittest
@@ -26,8 +29,8 @@ except ImportError:
 from argus.action_manager import windows as action_manager
 from argus import config as argus_config
 from argus import exceptions
-from argus.unit_tests import test_utils
 from argus.introspection.cloud import windows as introspection
+from argus.unit_tests import test_utils
 from argus import util
 
 CONFIG = argus_config.CONFIG
@@ -74,7 +77,7 @@ class WindowsActionManagerTest(unittest.TestCase):
 
     def test_download_exception(self):
         (self._client.run_command_with_retry
-            .side_effect) = exceptions.ArgusTimeoutError
+         .side_effect) = exceptions.ArgusTimeoutError
 
         with self.assertRaises(exceptions.ArgusTimeoutError):
             self._action_manager.download(test_utils.URI, test_utils.LOCATION)
@@ -379,9 +382,9 @@ class WindowsActionManagerTest(unittest.TestCase):
         self._test_wait_boot_completion(exc=exceptions.ArgusCLIError)
 
     def test_specific_prepare(self):
-        with test_utils.LogSnatcher(
-                'argus.action_manager.windows.WindowsActionManager'
-                '.specific_prepare') as snatcher:
+        with test_utils.LogSnatcher('argus.action_manager.windows'
+                                    '.WindowsActionManager'
+                                    '.specific_prepare') as snatcher:
             self.assertIsNone(self._action_manager.specific_prepare())
             self.assertEqual(snatcher.output,
                              ["Prepare something specific"
@@ -838,9 +841,8 @@ class WindowsActionManagerTest(unittest.TestCase):
                                            test_utils.EXIT_CODE)
             self._client.run_command_with_retry = mock_cmd_retry
             self.assertEqual(self._action_manager._execute(
-                test_utils.CMD, count=util.RETRY_COUNT,
-                delay=util.RETRY_DELAY, command_type=util.CMD),
-                test_utils.STDOUT)
+                test_utils.CMD, count=util.RETRY_COUNT, delay=util.RETRY_DELAY,
+                command_type=util.CMD), test_utils.STDOUT)
             self._client.run_command_with_retry.assert_called_once_with(
                 test_utils.CMD, count=util.RETRY_COUNT,
                 delay=util.RETRY_DELAY, command_type=util.CMD)
@@ -1064,9 +1066,9 @@ class WindowsActionManagerTest(unittest.TestCase):
         self._test_deploy_using_scheduled_task(exc=exceptions.ArgusError)
 
     def test_prepare_config(self):
-        with test_utils.LogSnatcher(
-                'argus.action_manager.windows.WindowsActionManager'
-                '.prepare_config') as snatcher:
+        with test_utils.LogSnatcher('argus.action_manager.windows'
+                                    '.WindowsActionManager'
+                                    '.prepare_config') as snatcher:
             self.assertIsNone(self._action_manager.prepare_config(
                 mock.Mock(), mock.Mock()))
             self.assertEqual(snatcher.output,
