@@ -49,6 +49,11 @@ MAJOR_VERSION_6 = "6"
 PRODUCT_TYPE_1 = "1"
 PRODUCT_TYPE_3 = "3"
 IMAGE_USERNAME = "fake_username"
+HOSTNAME = "fake_hostname"
+PASSWORD = "fake_password"
+SHELL_ID = "fake_shell_id"
+COMMAND = "fake-command"
+COMMAND_ID = "fake_command_id"
 
 
 # This is similar with unittest.TestCase.assertLogs from Python 3.4.
